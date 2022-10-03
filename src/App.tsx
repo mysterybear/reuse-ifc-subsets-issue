@@ -7,14 +7,14 @@ const ThreeApp = () => {
   return (
     <Fragment>
       <IfcThing
-        key="foo"
-        identifier="foo"
-        ifcUrl="/IFC/01.ifc"
+        key="bar"
+        identifier="bar"
+        ifcUrl="/IFC/02.ifc"
         position-x={-5}
       />
       <IfcThing
-        key="bar"
-        identifier="bar"
+        key="foo"
+        identifier="foo"
         ifcUrl="/IFC/01.ifc"
         position-x={5}
       />

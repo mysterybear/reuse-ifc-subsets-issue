@@ -1,9 +1,10 @@
 import { GroupProps } from "@react-three/fiber"
 import { useMemo, useRef } from "react"
 import { suspend } from "suspend-react"
-import { Group, MeshLambertMaterial } from "three"
-import { IFCLoader } from "web-ifc-three"
-import { guardIfc } from "./util"
+import { Group, Intersection, MeshLambertMaterial } from "three"
+import { IfcMesh } from "web-ifc-three/IFC/BaseDefinitions"
+import { IFCModel } from "web-ifc-three/IFC/components/IFCModel"
+import { pushIfcModel, useIfcLoader } from "./store"
 
 type Props = GroupProps & {
   ifcUrl: string
@@ -15,17 +16,16 @@ const IfcThing = (props: Props) => {
 
   const groupRef = useRef<Group>(null!)
 
-  const ifc = suspend(async () => {
-    const ifcLoader = new IFCLoader()
-    ifcLoader.ifcManager.setWasmPath("../../../")
-    const ifc = await ifcLoader.loadAsync(ifcUrl)
-    const clone = ifc.clone()
-    clone.name = identifier
-    clone.ifcManager = ifcLoader.ifcManager
-    return clone
+  const loader = useIfcLoader()
+  const manager = loader.ifcManager
+
+  const ifcModel = suspend(async () => {
+    const ifcModel: IFCModel = await loader.loadAsync(ifcUrl)
+    pushIfcModel(ifcModel, identifier)
+    return ifcModel
   }, [identifier, ifcUrl])
 
-  const material = useMemo(
+  const highlightMaterial = useMemo(
     () =>
       new MeshLambertMaterial({
         transparent: true,
@@ -36,28 +36,38 @@ const IfcThing = (props: Props) => {
     []
   )
 
+  const pick = (item: Intersection) => {
+    const mesh = item.object as IfcMesh
+    const modelID = mesh.modelID
+
+    if (modelID !== ifcModel.modelID) return
+
+    const expressID = manager.getExpressId(mesh.geometry, item.faceIndex!)
+
+    console.log({ modelID, expressID })
+
+    // @ts-ignore
+    manager.state.models[modelID] = mesh
+
+    manager.createSubset({
+      scene: groupRef.current,
+      ids: [expressID],
+      modelID,
+      removePrevious: false,
+      material: highlightMaterial,
+    })
+  }
+
   return (
     <group
       ref={groupRef}
       {...groupProps}
-      onPointerMove={({ intersections: [{ object, faceIndex }] }) => {
-        if (!guardIfc(object)) return
-        if (!faceIndex) throw new Error("no faceIndex")
-        if (!ifc.ifcManager) throw new Error("null ifcManager")
-
-        const { geometry } = ifc
-        const id = ifc.ifcManager.getExpressId(geometry, faceIndex)
-
-        ifc.ifcManager.createSubset({
-          modelID: object.id,
-          ids: [id],
-          material,
-          scene: groupRef.current,
-          removePrevious: true,
-        })
+      onClick={(e) => {
+        if (e.intersections.length === 0) return
+        pick(e.intersections[0])
       }}
     >
-      <primitive object={ifc} />
+      <primitive object={ifcModel} />
     </group>
   )
 }
